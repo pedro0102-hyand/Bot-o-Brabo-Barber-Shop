@@ -1,0 +1,26 @@
+# Python
+venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# Django
+*.log
+db.sqlite3
+media/
+
+# Ambiente
+.env
+.env.*
+
+# VS Code
+.vscode/
+
+# Mac
+.DS_Store
+
+# ChromaDB
+chroma_db/
+vectorstore/
