@@ -1,0 +1,38 @@
+# Sobre a Barbearia
+A Barbearia O Brabo é uma barbearia moderna localizada em Nova Iguacu, no estado do Rio de Janeiro.
+Nosso ambiente é confortável e descontraído, voltado para homens que valorizam estilo e qualidade.
+
+# Serviços e Preços
+- Corte de cabelo: R$ 45,00
+- Barba: R$ 35,00
+- Corte + Barba: R$ 70,00
+- Hidratação capilar: R$ 50,00
+- Sobrancelha: R$ 20,00
+
+# Horários de Funcionamento
+- Segunda a Sexta: 09h às 20h
+- Sábado: 09h às 18h
+- Domingo: Fechado
+
+# Localização
+Rua das José Alves Pereira, 200 - Bairro Centro - Nova Iguacu, Rio de Janeiro
+Ponto de referência: próximo ao veterinário 4 patas
+
+# Formas de Pagamento
+Aceitamos: Dinheiro, PIX, Cartão de débito e crédito (todas as bandeiras)
+Não aceitamos cheque.
+
+# Agendamento
+O agendamento pode ser feito pelo WhatsApp ou diretamente com o bot.
+Aceitamos agendamentos com até 7 dias de antecedência.
+Em caso de cancelamento, pedimos aviso com pelo menos 2 horas de antecedência.
+
+# Perguntas Frequentes
+Preciso agendar ou posso chegar sem hora marcada?
+Aceitamos clientes sem agendamento, mas recomendamos agendar para evitar espera.
+
+Vocês atendem crianças?
+Sim, atendemos crianças a partir de 5 anos.
+
+Quanto tempo dura o atendimento?
+Um corte simples dura em média 30 minutos. Corte + barba em torno de 50 minutos.
