@@ -1,0 +1,8 @@
+django==5.2
+python-dotenv
+langchain
+langchain-community
+langchain-ollama
+chromadb
+tiktoken
+langgraph
