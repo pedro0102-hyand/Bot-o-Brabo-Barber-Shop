@@ -6,3 +6,4 @@ langchain-ollama
 chromadb
 tiktoken
 langgraph
+python-telegram-bot
