@@ -3,12 +3,12 @@ import os
 import requests
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
-from rag.pipeline import criar_chain
+from rag.graph import criar_grafo
 
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 TELEGRAM_API_URL = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}"
 
-chain = criar_chain()
+grafo = criar_grafo()
 
 
 def enviar_mensagem(chat_id, texto):
@@ -33,9 +33,13 @@ def webhook(request):
             if not chat_id or not texto:
                 return JsonResponse({"ok": True})
 
-            resposta = chain.invoke(texto)
-            enviar_mensagem(chat_id, resposta)
+            resultado = grafo.invoke({
+                "mensagem": texto,
+                "intencao": "",
+                "resposta": "",
+            })
 
+            enviar_mensagem(chat_id, resultado["resposta"])
             return JsonResponse({"ok": True})
 
         except Exception as e:
