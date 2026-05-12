@@ -1,6 +1,5 @@
 import json
 import os
-import django
 import requests
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
@@ -14,7 +13,6 @@ grafo = criar_grafo()
 
 
 def enviar_mensagem(chat_id, texto):
-    """Envia mensagem para o usuário no Telegram."""
     url = f"{TELEGRAM_API_URL}/sendMessage"
     payload = {
         "chat_id": chat_id,
@@ -42,17 +40,19 @@ def webhook(request):
                 defaults={"nome": nome},
             )
 
-            # Processa a mensagem no grafo
+            # Processa no grafo
             resultado = grafo.invoke({
                 "mensagem": texto,
                 "intencao": "",
                 "resposta": "",
+                "telegram_id": str(chat_id),
+                "nome_cliente": nome,
             })
 
             resposta = resultado["resposta"]
             intencao = resultado["intencao"]
 
-            # Salva a conversa no banco
+            # Salva a conversa
             Conversa.objects.create(
                 cliente=cliente,
                 mensagem=texto,

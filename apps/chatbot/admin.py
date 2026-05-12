@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import Cliente, Conversa
+from .models import Cliente, Conversa, Agendamento
 
 
 @admin.register(Cliente)
@@ -18,3 +18,12 @@ class ConversaAdmin(admin.ModelAdmin):
     list_filter = ("intencao",)
     search_fields = ("mensagem", "resposta")
     readonly_fields = ("cliente", "mensagem", "resposta", "intencao", "criado_em")
+
+@admin.register(Agendamento)
+
+class AgendamentoAdmin(admin.ModelAdmin):
+
+    list_display = ("cliente", "servico", "data", "horario", "status", "criado_em")
+    list_filter = ("servico", "status", "data")
+    search_fields = ("cliente__nome",)
+    
