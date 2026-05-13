@@ -3,7 +3,11 @@ python-dotenv
 langchain
 langchain-community
 langchain-ollama
+langchain-chroma
+langchain-text-splitters
+langchain-core
 chromadb
 tiktoken
 langgraph
 python-telegram-bot
+requests
