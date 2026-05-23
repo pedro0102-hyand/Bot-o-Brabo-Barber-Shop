@@ -9,5 +9,4 @@ langchain-core
 chromadb
 tiktoken
 langgraph
-python-telegram-bot
 requests

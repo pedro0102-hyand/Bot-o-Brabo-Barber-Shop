@@ -1,5 +1,4 @@
 import os
-import django
 from typing import TypedDict, Literal
 from dotenv import load_dotenv
 from langchain_ollama import ChatOllama

@@ -66,7 +66,7 @@ def criar_chain():
     llm = ChatOllama(
         model=LLM_MODEL,
         base_url=OLLAMA_BASE_URL,
-        temperature=0.7,
+        temperature=0.5,
     )
 
     prompt = PromptTemplate(

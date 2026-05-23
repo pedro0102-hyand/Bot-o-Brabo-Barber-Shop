@@ -9,8 +9,6 @@ from apps.chatbot.models import Cliente, Conversa
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 TELEGRAM_API_URL = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}"
 
-grafo = criar_grafo()
-
 
 def enviar_mensagem(chat_id, texto):
     url = f"{TELEGRAM_API_URL}/sendMessage"
@@ -41,6 +39,7 @@ def webhook(request):
             )
 
             # Processa no grafo
+            grafo = criar_grafo()
             resultado = grafo.invoke({
                 "mensagem": texto,
                 "intencao": "",
