@@ -1,5 +1,5 @@
 from datetime import datetime, timedelta
-from .models import Agendamento, Cliente
+from .models import Agendamento, Cliente, EstadoAgendamento
 
 HORARIOS_DISPONIVEIS = [
     "09:00", "10:00", "11:00", "12:00",
@@ -17,21 +17,24 @@ SERVICOS = {
     "sobrancelha": "sobrancelha",
 }
 
-# Estado temporário da conversa em memória
-# {telegram_id: {etapa, dia, horario, servico}}
-estados = {}
-
 
 def get_estado(telegram_id):
-    return estados.get(str(telegram_id), {})
+    try:
+        obj = EstadoAgendamento.objects.get(telegram_id=str(telegram_id))
+        return obj.dados
+    except EstadoAgendamento.DoesNotExist:
+        return {}
 
 
 def set_estado(telegram_id, dados):
-    estados[str(telegram_id)] = dados
+    EstadoAgendamento.objects.update_or_create(
+        telegram_id=str(telegram_id),
+        defaults={"dados": dados},
+    )
 
 
 def limpar_estado(telegram_id):
-    estados.pop(str(telegram_id), None)
+    EstadoAgendamento.objects.filter(telegram_id=str(telegram_id)).delete()
 
 
 def horarios_livres(data):
