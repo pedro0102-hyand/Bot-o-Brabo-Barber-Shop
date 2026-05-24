@@ -1,4 +1,5 @@
 from datetime import datetime, timedelta
+from django.db import transaction, IntegrityError
 from .models import Agendamento, Cliente, EstadoAgendamento
 
 HORARIOS_DISPONIVEIS = [
@@ -97,6 +98,42 @@ def parsear_horario(texto):
         return None
 
 
+def _voltar_para_horario(telegram_id, estado):
+    """
+    Regride o estado para aguardando_horario e retorna a mensagem
+    com os horários ainda disponíveis. Usado quando o horário
+    escolhido é ocupado por outra pessoa durante a confirmação.
+    """
+    livres = horarios_livres(estado["dia"])
+
+    if not livres:
+        # Dia inteiramente lotado — volta uma etapa a mais
+        estado_novo = {"etapa": "aguardando_dia"}
+        set_estado(telegram_id, estado_novo)
+        data_fmt = datetime.strptime(estado["dia"], "%Y-%m-%d").strftime("%d/%m/%Y")
+        return (
+            f"⚠️ O horário que você escolheu acabou de ser reservado por outra pessoa "
+            f"e {data_fmt} não tem mais horários disponíveis.\n\n"
+            "Por favor, escolha outro dia:\n"
+            "Ex: amanhã, segunda, 20/06"
+        )
+
+    estado["etapa"] = "aguardando_horario"
+    # Remove o horário inválido do estado, mantém o dia
+    estado.pop("horario", None)
+    estado.pop("servico", None)
+    set_estado(telegram_id, estado)
+
+    data_fmt = datetime.strptime(estado["dia"], "%Y-%m-%d").strftime("%d/%m/%Y")
+    horarios_txt = " · ".join(livres)
+    return (
+        f"⚠️ O horário que você escolheu acabou de ser reservado por outra pessoa.\n\n"
+        f"Horários ainda disponíveis em {data_fmt}:\n"
+        f"⏰ {horarios_txt}\n\n"
+        "Qual horário prefere?"
+    )
+
+
 def processar_agendamento(telegram_id, texto, nome_cliente):
     """Gerencia o fluxo de agendamento."""
     estado = get_estado(telegram_id)
@@ -151,7 +188,7 @@ def processar_agendamento(telegram_id, texto, nome_cliente):
             "2 - Barba (R$ 35)\n"
             "3 - Corte + Barba (R$ 70)\n"
             "4 - Hidratação (R$ 50)\n"
-            "5 - Sobrancelha (R$ 20)"
+            "5 - Sobrancelha (R$ 25)"
         )
 
     # ETAPA 4 — Receber o serviço, pedir confirmação
@@ -194,30 +231,52 @@ def processar_agendamento(telegram_id, texto, nome_cliente):
             "Responda sim ou não."
         )
 
-    # ETAPA 5 — Confirmar e salvar
+    # ETAPA 5 — Confirmar e salvar com proteção contra race condition
     if etapa == "aguardando_confirmacao":
         if texto.lower().strip() in ["sim", "s", "yes", "confirmo", "ok"]:
             try:
-                cliente, _ = Cliente.objects.get_or_create(
-                    telegram_id=str(telegram_id),
-                    defaults={"nome": nome_cliente},
-                )
-                Agendamento.objects.create(
-                    cliente=cliente,
-                    servico=estado["servico"],
-                    data=estado["dia"],
-                    horario=estado["horario"],
-                    status="confirmado",
-                )
+                with transaction.atomic():
+                    # Trava os registros de agendamento para essa data/horário
+                    # enquanto a transação estiver aberta, impedindo inserção dupla.
+                    conflito = (
+                        Agendamento.objects
+                        .select_for_update()
+                        .filter(
+                            data=estado["dia"],
+                            horario=estado["horario"],
+                            status="confirmado",
+                        )
+                        .exists()
+                    )
+
+                    if conflito:
+                        # Horário foi tomado após a escolha do usuário —
+                        # regride o fluxo para que ele escolha outro horário.
+                        return _voltar_para_horario(telegram_id, estado)
+
+                    cliente, _ = Cliente.objects.get_or_create(
+                        telegram_id=str(telegram_id),
+                        defaults={"nome": nome_cliente},
+                    )
+                    Agendamento.objects.create(
+                        cliente=cliente,
+                        servico=estado["servico"],
+                        data=estado["dia"],
+                        horario=estado["horario"],
+                        status="confirmado",
+                    )
+
                 limpar_estado(telegram_id)
                 return (
                     "Agendamento confirmado! 🎉\n"
                     "Te esperamos na Barbearia O Brabo! 💈\n"
                     "Qualquer dúvida é só chamar!"
                 )
-            except Exception:
-                limpar_estado(telegram_id)
-                return "Esse horário acabou de ser reservado. Por favor, escolha outro horário!"
+
+            except IntegrityError:
+                # Salvaguarda: se duas transações passarem pelo select_for_update
+                # quase simultaneamente e uma ganhar a corrida, a outra cai aqui.
+                return _voltar_para_horario(telegram_id, estado)
 
         elif texto.lower().strip() in ["não", "nao", "n", "no", "cancelar"]:
             limpar_estado(telegram_id)
