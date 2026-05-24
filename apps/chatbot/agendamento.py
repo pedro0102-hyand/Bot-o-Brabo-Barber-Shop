@@ -1,6 +1,35 @@
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, date, time
 from django.db import transaction, IntegrityError
 from .models import Agendamento, Cliente, EstadoAgendamento
+
+
+def _para_date(valor) -> date:
+    """
+    Normaliza qualquer representação de data para datetime.date.
+
+    O campo estado["dia"] é serializado como str no JSONField ("2026-05-25"),
+    mas parsear_data() retorna um objeto date. Centralizar a conversão aqui
+    garante que horarios_livres() e os filter() do banco recebam sempre
+    o tipo correto, independente de qual etapa do fluxo está chamando.
+    """
+    if isinstance(valor, date):
+        return valor
+    return datetime.strptime(valor, "%Y-%m-%d").date()
+
+
+def _para_time(valor) -> time:
+    """
+    Normaliza o retorno de TimeField para datetime.time.
+
+    SQLite via alguns drivers pode retornar o horário como string
+    ("09:00:00") em vez de datetime.time. Usar .strftime() direto
+    numa string causa AttributeError silencioso em produção.
+    """
+    if isinstance(valor, time):
+        return valor
+    # Aceita "HH:MM" e "HH:MM:SS"
+    fmt = "%H:%M:%S" if valor.count(":") == 2 else "%H:%M"
+    return datetime.strptime(valor, fmt).time()
 
 HORARIOS_DISPONIVEIS = [
     "09:00", "10:00", "11:00", "12:00",
@@ -38,14 +67,24 @@ def limpar_estado(telegram_id):
     EstadoAgendamento.objects.filter(telegram_id=str(telegram_id)).delete()
 
 
-def horarios_livres(data):
-    """Retorna horários disponíveis para uma data."""
+def horarios_livres(data) -> list:
+    """
+    Retorna os horários disponíveis para uma data.
+
+    Aceita tanto datetime.date quanto str ("YYYY-MM-DD") — normaliza
+    internamente via _para_date() para garantir o tipo correto no
+    filter() e evitar falso-positivo de disponibilidade.
+    Os valores de TimeField são normalizados via _para_time() para
+    cobrir drivers que retornam string em vez de datetime.time.
+    """
+    data_normalizada = _para_date(data)
+
     agendados = Agendamento.objects.filter(
-        data=data,
-        status="confirmado"
+        data=data_normalizada,
+        status="confirmado",
     ).values_list("horario", flat=True)
 
-    agendados_str = [h.strftime("%H:%M") for h in agendados]
+    agendados_str = {_para_time(h).strftime("%H:%M") for h in agendados}
     return [h for h in HORARIOS_DISPONIVEIS if h not in agendados_str]
 
 
@@ -110,7 +149,7 @@ def _voltar_para_horario(telegram_id, estado):
         # Dia inteiramente lotado — volta uma etapa a mais
         estado_novo = {"etapa": "aguardando_dia"}
         set_estado(telegram_id, estado_novo)
-        data_fmt = datetime.strptime(estado["dia"], "%Y-%m-%d").strftime("%d/%m/%Y")
+        data_fmt = _para_date(estado["dia"]).strftime("%d/%m/%Y")
         return (
             f"⚠️ O horário que você escolheu acabou de ser reservado por outra pessoa "
             f"e {data_fmt} não tem mais horários disponíveis.\n\n"
@@ -124,7 +163,7 @@ def _voltar_para_horario(telegram_id, estado):
     estado.pop("servico", None)
     set_estado(telegram_id, estado)
 
-    data_fmt = datetime.strptime(estado["dia"], "%Y-%m-%d").strftime("%d/%m/%Y")
+    data_fmt = _para_date(estado["dia"]).strftime("%d/%m/%Y")
     horarios_txt = " · ".join(livres)
     return (
         f"⚠️ O horário que você escolheu acabou de ser reservado por outra pessoa.\n\n"
@@ -222,7 +261,7 @@ def processar_agendamento(telegram_id, texto, nome_cliente):
             "sobrancelha": "Sobrancelha",
         }
 
-        data_fmt = datetime.strptime(estado["dia"], "%Y-%m-%d").strftime("%d/%m/%Y")
+        data_fmt = _para_date(estado["dia"]).strftime("%d/%m/%Y")
         return (
             f"Confirma o agendamento? ✅\n\n"
             f"📅 Data: {data_fmt}\n"
@@ -242,7 +281,7 @@ def processar_agendamento(telegram_id, texto, nome_cliente):
                         Agendamento.objects
                         .select_for_update()
                         .filter(
-                            data=estado["dia"],
+                            data=_para_date(estado["dia"]),
                             horario=estado["horario"],
                             status="confirmado",
                         )
@@ -261,7 +300,7 @@ def processar_agendamento(telegram_id, texto, nome_cliente):
                     Agendamento.objects.create(
                         cliente=cliente,
                         servico=estado["servico"],
-                        data=estado["dia"],
+                        data=_para_date(estado["dia"]),
                         horario=estado["horario"],
                         status="confirmado",
                     )
