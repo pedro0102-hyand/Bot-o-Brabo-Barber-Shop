@@ -3,7 +3,7 @@ import os
 import requests
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
-from rag.graph import criar_grafo
+from rag.graph import get_grafo
 from apps.chatbot.models import Cliente, Conversa
 
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
@@ -32,14 +32,13 @@ def webhook(request):
             if not chat_id or not texto:
                 return JsonResponse({"ok": True})
 
-            # Salva ou recupera o cliente
             cliente, _ = Cliente.objects.get_or_create(
                 telegram_id=str(chat_id),
                 defaults={"nome": nome},
             )
 
-            # Processa no grafo
-            grafo = criar_grafo()
+            # get_grafo() retorna o singleton compilado — sem recriação a cada request
+            grafo = get_grafo()
             resultado = grafo.invoke({
                 "mensagem": texto,
                 "intencao": "",
@@ -51,7 +50,6 @@ def webhook(request):
             resposta = resultado["resposta"]
             intencao = resultado["intencao"]
 
-            # Salva a conversa
             Conversa.objects.create(
                 cliente=cliente,
                 mensagem=texto,

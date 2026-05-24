@@ -1,25 +1,77 @@
 import os
+import threading
 from typing import TypedDict, Literal
 from dotenv import load_dotenv
 from langchain_ollama import ChatOllama
 from langchain_core.messages import HumanMessage
 from langgraph.graph import StateGraph, END
 
-from rag.pipeline import criar_chain
-
 load_dotenv()
 
 OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
 LLM_MODEL = os.getenv("LLM_MODEL", "gemma2:2b")
 
-rag_chain = criar_chain()
+# ── Singleton ────────────────────────────────────────────────────────────────
+#
+# Problema original: rag_chain e llm eram instanciados no nível do módulo,
+# o que significa que ao importar graph.py (no boot do Django) o servidor
+# tentava conectar ao Ollama e ao ChromaDB imediatamente. Se o Ollama não
+# estivesse rodando, o processo crashava antes de aceitar qualquer requisição.
+#
+# Além disso, criar_grafo() era chamado em cada requisição, recompilando o
+# StateGraph e reinicializando embeddings a cada POST — caro e desnecessário.
+#
+# Solução: lazy initialization com double-checked locking.
+# - _grafo_cache, _rag_chain e _llm começam como None.
+# - get_grafo() inicializa tudo na primeira chamada e reutiliza nas demais.
+# - O Lock garante que duas threads não inicializem ao mesmo tempo.
+# ─────────────────────────────────────────────────────────────────────────────
 
-llm = ChatOllama(
-    model=LLM_MODEL,
-    base_url=OLLAMA_BASE_URL,
-    temperature=0,
-)
+_grafo_cache = None
+_rag_chain = None
+_llm = None
+_lock = threading.Lock()
 
+
+def _inicializar():
+    """
+    Instancia rag_chain, llm e compila o grafo LangGraph.
+    Chamado uma única vez, protegido pelo _lock.
+    Separado de get_grafo() para facilitar testes unitários
+    (basta mockar _inicializar antes da primeira chamada).
+    """
+    global _grafo_cache, _rag_chain, _llm
+
+    from rag.pipeline import criar_chain
+
+    _rag_chain = criar_chain()          # carrega ChromaDB + embeddings Ollama
+    _llm = ChatOllama(
+        model=LLM_MODEL,
+        base_url=OLLAMA_BASE_URL,
+        temperature=0,
+    )
+    _grafo_cache = _criar_grafo_compilado()
+
+
+def get_grafo():
+    """
+    Retorna o grafo compilado, inicializando na primeira chamada (lazy).
+
+    Usa double-checked locking: verifica _grafo_cache sem o lock primeiro
+    (caminho rápido para todas as requisições após a primeira), e só adquire
+    o lock se o cache estiver vazio (apenas na inicialização).
+    """
+    global _grafo_cache
+
+    if _grafo_cache is None:                    # verificação rápida sem lock
+        with _lock:
+            if _grafo_cache is None:            # segunda verificação com lock
+                _inicializar()
+
+    return _grafo_cache
+
+
+# ── Tipagem do estado ────────────────────────────────────────────────────────
 
 class Estado(TypedDict):
     mensagem: str
@@ -28,6 +80,8 @@ class Estado(TypedDict):
     telegram_id: str
     nome_cliente: str
 
+
+# ── Nós do grafo ─────────────────────────────────────────────────────────────
 
 def classificar(estado: Estado) -> Estado:
     mensagem = estado["mensagem"]
@@ -53,7 +107,7 @@ Responda APENAS com uma palavra: saudacao, pergunta, agendamento ou fallback.
 Mensagem: {mensagem}
 Categoria:"""
 
-    resposta = llm.invoke([HumanMessage(content=prompt)])
+    resposta = _llm.invoke([HumanMessage(content=prompt)])
     intencao = resposta.content.strip().lower()
 
     if intencao not in ["saudacao", "pergunta", "agendamento", "fallback"]:
@@ -72,7 +126,7 @@ def saudacao(estado: Estado) -> Estado:
 
 
 def pergunta(estado: Estado) -> Estado:
-    resposta = rag_chain.invoke(estado["mensagem"])
+    resposta = _rag_chain.invoke(estado["mensagem"])
     return {**estado, "resposta": resposta}
 
 
@@ -99,7 +153,14 @@ def rotear(estado: Estado) -> Literal["saudacao", "pergunta", "agendamento", "fa
     return estado["intencao"]
 
 
-def criar_grafo():
+# ── Compilação do grafo ───────────────────────────────────────────────────────
+
+def _criar_grafo_compilado():
+    """
+    Monta e compila o StateGraph. Chamado uma única vez por _inicializar().
+    Separado de get_grafo() para que a estrutura do grafo permaneça legível
+    e testável independentemente do mecanismo de cache.
+    """
     grafo = StateGraph(Estado)
 
     grafo.add_node("classificar", classificar)
@@ -127,3 +188,15 @@ def criar_grafo():
     grafo.add_edge("fallback", END)
 
     return grafo.compile()
+
+
+# ── Compatibilidade retroativa ────────────────────────────────────────────────
+#
+# criar_grafo() era a API pública usada pelas views e pelos scripts de teste.
+# Mantida como alias de get_grafo() para que qualquer código externo que já
+# importe criar_grafo continue funcionando sem alteração.
+# ─────────────────────────────────────────────────────────────────────────────
+
+def criar_grafo():
+    """Alias retrocompatível para get_grafo(). Prefira get_grafo() em código novo."""
+    return get_grafo()
