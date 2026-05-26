@@ -79,22 +79,39 @@ class Estado(TypedDict):
     resposta: str
     telegram_id: str
     nome_cliente: str
+    agendamento_ativo: bool   # True quando há fluxo de agendamento em andamento
 
 
 # ── Nós do grafo ─────────────────────────────────────────────────────────────
 
+def _tem_agendamento_ativo(telegram_id: str) -> bool:
+    """Retorna True se o usuário tem um fluxo de agendamento em andamento."""
+    try:
+        from apps.chatbot.agendamento import get_estado
+        return bool(get_estado(telegram_id).get("etapa"))
+    except Exception:
+        return False
+
+
 def classificar(estado: Estado) -> Estado:
+    """
+    Classifica a intenção da mensagem.
+
+    Comportamento com agendamento ativo:
+    - Perguntas e saudações são tratadas normalmente (RAG / boas-vindas),
+      preservando a etapa do agendamento. O nó destino acrescenta um
+      lembrete ao final da resposta para o usuário não perder o fio.
+    - Mensagens que o LLM classifica como 'agendamento' continuam o fluxo.
+    - 'fallback' também continua o fluxo, pois pode ser uma resposta
+      válida à pergunta atual da etapa (ex: digitar um horário ou serviço).
+
+    Dessa forma o usuário pode tirar dúvidas no meio do agendamento sem
+    precisar cancelar, e ainda recebe o lembrete de onde parou.
+    """
     mensagem = estado["mensagem"]
     telegram_id = estado.get("telegram_id", "")
 
-    # Verifica se já está em fluxo de agendamento
-    try:
-        from apps.chatbot.agendamento import get_estado
-        estado_agendamento = get_estado(telegram_id)
-        if estado_agendamento.get("etapa"):
-            return {**estado, "intencao": "agendamento"}
-    except Exception:
-        pass
+    agendamento_ativo = _tem_agendamento_ativo(telegram_id)
 
     prompt = f"""Classifique a mensagem abaixo em uma dessas categorias:
 - saudacao: cumprimentos como oi, olá, bom dia, boa tarde, boa noite, tudo bem
@@ -113,7 +130,34 @@ Categoria:"""
     if intencao not in ["saudacao", "pergunta", "agendamento", "fallback"]:
         intencao = "fallback"
 
-    return {**estado, "intencao": intencao}
+    # Com agendamento ativo, apenas perguntas e saudações "escapam" do fluxo.
+    # Fallback permanece no fluxo porque costuma ser uma resposta à etapa atual
+    # (ex: o usuário digita "09:00" — o LLM classifica como fallback, mas é a
+    # resposta esperada pela etapa aguardando_horario).
+    if agendamento_ativo and intencao not in ("pergunta", "saudacao"):
+        intencao = "agendamento"
+
+    return {**estado, "intencao": intencao, "agendamento_ativo": agendamento_ativo}
+
+
+def _lembrete_agendamento(telegram_id: str) -> str:
+    """
+    Retorna uma string com o lembrete da etapa pendente do agendamento,
+    para ser acrescentada ao final de respostas de pergunta e saudação.
+    """
+    try:
+        from apps.chatbot.agendamento import get_estado
+        etapa = get_estado(telegram_id).get("etapa", "")
+    except Exception:
+        return ""
+
+    lembretes = {
+        "aguardando_dia":          "\n\n📅 Você ainda tem um agendamento em andamento. Qual dia prefere?",
+        "aguardando_horario":      "\n\n⏰ Você ainda tem um agendamento em andamento. Qual horário prefere?",
+        "aguardando_servico":      "\n\n✂️ Você ainda tem um agendamento em andamento. Qual serviço deseja? (1-5)",
+        "aguardando_confirmacao":  "\n\n✅ Você ainda tem um agendamento aguardando confirmação. Responda sim ou não.",
+    }
+    return lembretes.get(etapa, "")
 
 
 def saudacao(estado: Estado) -> Estado:
@@ -122,11 +166,15 @@ def saudacao(estado: Estado) -> Estado:
         "Posso te ajudar com informações sobre nossos serviços, preços, horários e agendamentos.\n"
         "Como posso te ajudar?"
     )
+    if estado.get("agendamento_ativo"):
+        resposta += _lembrete_agendamento(estado["telegram_id"])
     return {**estado, "resposta": resposta}
 
 
 def pergunta(estado: Estado) -> Estado:
     resposta = _rag_chain.invoke(estado["mensagem"])
+    if estado.get("agendamento_ativo"):
+        resposta += _lembrete_agendamento(estado["telegram_id"])
     return {**estado, "resposta": resposta}
 
 

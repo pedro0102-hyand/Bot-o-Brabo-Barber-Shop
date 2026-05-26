@@ -173,10 +173,32 @@ def _voltar_para_horario(telegram_id, estado):
     )
 
 
+# Palavras que encerram o agendamento em qualquer etapa.
+# Verificadas antes de qualquer lógica de etapa para garantir
+# que o usuário sempre consiga sair do fluxo sem travar.
+_PALAVRAS_ESCAPE = {"cancelar", "sair", "parar", "desistir", "voltar", "abort"}
+
+
 def processar_agendamento(telegram_id, texto, nome_cliente):
-    """Gerencia o fluxo de agendamento."""
+    """
+    Gerencia o fluxo de agendamento.
+
+    Palavras de escape (cancelar, sair, parar, desistir, voltar) encerram
+    o fluxo em qualquer etapa, sem depender da classificação do LLM.
+    Isso é necessário porque classificar() roteia para 'agendamento' sempre
+    que há estado ativo — sem essa verificação local, o usuário ficaria
+    preso sem conseguir cancelar.
+    """
     estado = get_estado(telegram_id)
     etapa = estado.get("etapa", "inicio")
+
+    # ── Escape universal ──────────────────────────────────────────────────────
+    # Verificado antes de qualquer etapa para que funcione em todo o fluxo,
+    # incluindo aguardando_confirmacao (onde "cancelar" seria interpretado
+    # como resposta inválida à pergunta sim/não).
+    if texto.lower().strip() in _PALAVRAS_ESCAPE:
+        limpar_estado(telegram_id)
+        return "Agendamento cancelado. Quando quiser marcar é só falar! 😊"
 
     # ETAPA 1 — Pedir o dia
     if etapa == "inicio":
