@@ -1,6 +1,7 @@
 import json
 import os
 import requests
+from django.db import transaction
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 from rag.graph import get_grafo
@@ -32,12 +33,11 @@ def webhook(request):
             if not chat_id or not texto:
                 return JsonResponse({"ok": True})
 
-            cliente, _ = Cliente.objects.get_or_create(
-                telegram_id=str(chat_id),
-                defaults={"nome": nome},
-            )
-
-            # get_grafo() retorna o singleton compilado — sem recriação a cada request
+            # ── 1. Processa no grafo ──────────────────────────────────────────
+            # Executado ANTES de qualquer escrita no banco.
+            # Se o grafo lançar exceção, nenhum registro é criado —
+            # evita o cenário anterior onde o cliente era persistido
+            # mas a conversa nunca chegava a ser salva.
             grafo = get_grafo()
             resultado = grafo.invoke({
                 "mensagem": texto,
@@ -50,13 +50,25 @@ def webhook(request):
             resposta = resultado["resposta"]
             intencao = resultado["intencao"]
 
-            Conversa.objects.create(
-                cliente=cliente,
-                mensagem=texto,
-                resposta=resposta,
-                intencao=intencao,
-            )
+            # ── 2. Persiste cliente + conversa na mesma transação ─────────────
+            # transaction.atomic() garante que cliente e conversa são criados
+            # juntos — se Conversa.create() falhar, o get_or_create do cliente
+            # também é revertido, mantendo o banco consistente.
+            with transaction.atomic():
+                cliente, _ = Cliente.objects.get_or_create(
+                    telegram_id=str(chat_id),
+                    defaults={"nome": nome},
+                )
+                Conversa.objects.create(
+                    cliente=cliente,
+                    mensagem=texto,
+                    resposta=resposta,
+                    intencao=intencao,
+                )
 
+            # ── 3. Envia a resposta ao Telegram ──────────────────────────────
+            # Fora do atomic: falha de rede não deve reverter o registro
+            # da conversa que já foi salva com sucesso.
             enviar_mensagem(chat_id, resposta)
             return JsonResponse({"ok": True})
 
