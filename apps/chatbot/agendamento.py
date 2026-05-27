@@ -126,15 +126,58 @@ def parsear_data(texto):
 
 
 def parsear_horario(texto):
-    """Converte texto em horário."""
-    texto = texto.strip().replace("h", ":00").replace("H", ":00")
-    if ":" not in texto:
-        texto = texto + ":00"
-    try:
-        h = datetime.strptime(texto, "%H:%M")
-        return h.strftime("%H:%M")
-    except ValueError:
+    """
+    Extrai um horário de qualquer formato textual razoável e retorna
+    "HH:MM" se reconhecido, ou None caso contrário.
+
+    Formatos cobertos:
+      9 / 09 / 9h / 9H / 9h00 / 9H00 / 14h30 / 9:00 / 09:00 / 09:00:00
+      às 10h / as 14h / 10 horas / 14 horas
+
+    Horários com minutos não-zero (ex: 14h30) são extraídos corretamente;
+    a validação posterior `horario not in livres` descarta os que não estão
+    na grade de disponíveis — esta função só garante a extração correta.
+
+    A implementação anterior usava .replace("h", ":00") que transformava
+    "14h30" em "14:0030" (quebrava o strptime) e "9h" em "9:00" apenas por
+    coincidência. Agora usa regex com grupos explícitos para hora e minuto.
+    """
+    import re
+
+    texto = texto.lower().strip()
+
+    # Remove prefixos coloquiais: "às 10h", "as 14h", "umas 9h"
+    texto = re.sub(r'^(às?|as|umas?)\s*', '', texto)
+
+    # Remove sufixos por extenso: "10 horas", "14 horas"
+    texto = re.sub(r'\s*horas?\s*$', '', texto)
+
+    # Extrai hora e minuto com regex unificado que cobre:
+    #   HH:MM:SS  (09:00:00)
+    #   HH:MM     (09:00, 14:30)
+    #   HHhMM     (14h30, 9h00)
+    #   HHh       (9h, 14h)
+    #   HH        (9, 14)
+    m = re.fullmatch(
+        r'(\d{1,2})'          # hora
+        r'(?:'                 # início grupo opcional de minutos
+        r'[h:](\d{2})'        # separador h ou : seguido de 2 dígitos
+        r'(?::\d{2})?'        # segundos opcionais (09:00:00)
+        r'|h'                  # OU apenas 'h' sem minutos (9h)
+        r')?',                 # fim grupo opcional
+        texto.strip(),
+    )
+
+    if not m:
         return None
+
+    hora   = int(m.group(1))
+    minuto = int(m.group(2)) if m.group(2) is not None else 0
+
+    if hora > 23 or minuto > 59:
+        return None
+
+    return f"{hora:02d}:{minuto:02d}"
 
 
 def _voltar_para_horario(telegram_id, estado):
