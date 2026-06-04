@@ -89,7 +89,7 @@ def horarios_livres(data) -> list:
 
 
 def parsear_data(texto):
-    """Converte texto em data."""
+    """Converte texto em data. Retorna None para datas no passado."""
     texto = texto.lower().strip()
     hoje = datetime.now().date()
 
@@ -112,17 +112,24 @@ def parsear_data(texto):
 
     # Tenta formato DD/MM
     try:
-        return datetime.strptime(texto, "%d/%m").replace(year=hoje.year).date()
+        data = datetime.strptime(texto, "%d/%m").replace(year=hoje.year).date()
+        if data < hoje:
+            data = data.replace(year=hoje.year + 1)
+        return data
     except ValueError:
         pass
 
     # Tenta formato DD/MM/YYYY
     try:
-        return datetime.strptime(texto, "%d/%m/%Y").date()
+        data = datetime.strptime(texto, "%d/%m/%Y").date()
+        if data < hoje:
+            return None
+        return data
     except ValueError:
         pass
 
     return None
+
 
 
 def parsear_horario(texto):
