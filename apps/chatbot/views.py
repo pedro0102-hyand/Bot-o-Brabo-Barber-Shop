@@ -1,4 +1,5 @@
 import json
+import logging
 from django.db import transaction
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
@@ -6,6 +7,7 @@ from django.views.decorators.http import require_POST
 from rag.graph import get_grafo
 from apps.chatbot.models import Cliente, Conversa
 
+logger = logging.getLogger(__name__)
 
 @csrf_exempt
 @require_POST
@@ -53,4 +55,5 @@ def chat(request):
         return JsonResponse({"resposta": resposta, "intencao": intencao})
 
     except Exception as e:
+        logger.exception("Erro no endpoint de chat")
         return JsonResponse({"erro": str(e)}, status=500)

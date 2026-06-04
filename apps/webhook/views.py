@@ -1,9 +1,13 @@
 import json
+import logging
 import os
 import requests
 from django.db import transaction
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
+
+logger = logging.getLogger(__name__)
+
 from rag.graph import get_grafo
 from apps.chatbot.models import Cliente, Conversa
 
@@ -73,6 +77,7 @@ def webhook(request):
             return JsonResponse({"ok": True})
 
         except Exception as e:
+            logger.exception("Erro no endpoint de webhook")
             return JsonResponse({"erro": str(e)}, status=500)
 
     return JsonResponse({"ok": True})
