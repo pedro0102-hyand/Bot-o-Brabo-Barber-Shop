@@ -238,13 +238,3 @@ def _criar_grafo_compilado():
     return grafo.compile()
 
 
-# ── Compatibilidade retroativa ────────────────────────────────────────────────
-#
-# criar_grafo() era a API pública usada pelas views e pelos scripts de teste.
-# Mantida como alias de get_grafo() para que qualquer código externo que já
-# importe criar_grafo continue funcionando sem alteração.
-# ─────────────────────────────────────────────────────────────────────────────
-
-def criar_grafo():
-    """Alias retrocompatível para get_grafo(). Prefira get_grafo() em código novo."""
-    return get_grafo()
