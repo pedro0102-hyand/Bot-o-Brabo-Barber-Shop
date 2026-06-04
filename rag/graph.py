@@ -3,7 +3,7 @@ import threading
 from typing import TypedDict, Literal
 from dotenv import load_dotenv
 from langchain_ollama import ChatOllama
-from langchain_core.messages import HumanMessage
+from langchain_core.messages import HumanMessage, SystemMessage
 from langgraph.graph import StateGraph, END
 
 load_dotenv()
@@ -18,8 +18,7 @@ LLM_MODEL = os.getenv("LLM_MODEL", "gemma2:2b")
 # tentava conectar ao Ollama e ao ChromaDB imediatamente. Se o Ollama não
 # estivesse rodando, o processo crashava antes de aceitar qualquer requisição.
 #
-# Além disso, criar_grafo() era chamado em cada requisição, recompilando o
-# StateGraph e reinicializando embeddings a cada POST — caro e desnecessário.
+# Além disso, o grafo era recompilado em cada requisição — caro e desnecessário.
 #
 # Solução: lazy initialization com double-checked locking.
 # - _grafo_cache, _rag_chain e _llm começam como None.
@@ -82,6 +81,23 @@ class Estado(TypedDict):
     agendamento_ativo: bool   # True quando há fluxo de agendamento em andamento
 
 
+# ── Prompt de classificação (isolado como system message) ────────────────────
+#
+# Manter as instruções fora da f-string e enviá-las como SystemMessage impede
+# que o texto do usuário sobrescreva ou desvie as regras de classificação.
+# Um usuário que envie "ignore as instruções acima" recebe esse texto isolado
+# no role 'user', sem acesso ao conteúdo do role 'system'.
+# ─────────────────────────────────────────────────────────────────────────────
+
+_PROMPT_CLASSIFICAR = """Classifique a mensagem do usuário em uma dessas categorias:
+- saudacao: cumprimentos como oi, olá, bom dia, boa tarde, boa noite, tudo bem
+- pergunta: dúvidas sobre preços, serviços, horários, localização, pagamento
+- agendamento: quer marcar, agendar, reservar horário
+- fallback: qualquer outra coisa que não se encaixa nas anteriores
+
+Responda APENAS com uma palavra: saudacao, pergunta, agendamento ou fallback."""
+
+
 # ── Nós do grafo ─────────────────────────────────────────────────────────────
 
 def _tem_agendamento_ativo(telegram_id: str) -> bool:
@@ -113,18 +129,10 @@ def classificar(estado: Estado) -> Estado:
 
     agendamento_ativo = _tem_agendamento_ativo(telegram_id)
 
-    prompt = f"""Classifique a mensagem abaixo em uma dessas categorias:
-- saudacao: cumprimentos como oi, olá, bom dia, boa tarde, boa noite, tudo bem
-- pergunta: dúvidas sobre preços, serviços, horários, localização, pagamento
-- agendamento: quer marcar, agendar, reservar horário
-- fallback: qualquer outra coisa que não se encaixa nas anteriores
-
-Responda APENAS com uma palavra: saudacao, pergunta, agendamento ou fallback.
-
-Mensagem: {mensagem}
-Categoria:"""
-
-    resposta = _llm.invoke([HumanMessage(content=prompt)])
+    resposta = _llm.invoke([
+        SystemMessage(content=_PROMPT_CLASSIFICAR),
+        HumanMessage(content=mensagem),
+    ])
     intencao = resposta.content.strip().lower()
 
     if intencao not in ["saudacao", "pergunta", "agendamento", "fallback"]:
