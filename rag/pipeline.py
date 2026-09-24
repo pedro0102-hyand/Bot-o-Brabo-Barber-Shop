@@ -16,58 +16,31 @@ EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "nomic-embed-text")
 DATA_PATH = os.path.join(os.path.dirname(__file__), "../data/barbearia.txt")
 VECTORSTORE_PATH = os.path.join(os.path.dirname(__file__), "../vectorstore")
 
-# Criação do vectorstore e da chain RAG
+# Criação do vectorstore 
 def criar_vectorstore():
-    """Carrega o documento e cria o vectorstore no ChromaDB."""
+
     loader = TextLoader(DATA_PATH, encoding="utf-8")
     documentos = loader.load()
-
-    splitter = RecursiveCharacterTextSplitter(
-        chunk_size=500,
-        chunk_overlap=50,
-    )
+    splitter = RecursiveCharacterTextSplitter(chunk_size=500, chunk_overlap=50)
     chunks = splitter.split_documents(documentos)
-
-    embeddings = OllamaEmbeddings(
-        model=EMBEDDING_MODEL,
-        base_url=OLLAMA_BASE_URL,
-    )
-
-    vectorstore = Chroma.from_documents(
-        documents=chunks,
-        embedding=embeddings,
-        persist_directory=VECTORSTORE_PATH,
-    )
-
+    embeddings = OllamaEmbeddings(model=EMBEDDING_MODEL,base_url=OLLAMA_BASE_URL)
+    vectorstore = Chroma.from_documents(documents=chunks,embedding=embeddings,persist_directory=VECTORSTORE_PATH)
     print(f"✅ Vectorstore criado com {len(chunks)} chunks.")
     return vectorstore
 
-
+# carrega o vectorstore existente (sem recriar)
 def carregar_vectorstore():
-    """Carrega o vectorstore existente."""
-    embeddings = OllamaEmbeddings(
-        model=EMBEDDING_MODEL,
-        base_url=OLLAMA_BASE_URL,
-    )
 
-    vectorstore = Chroma(
-        persist_directory=VECTORSTORE_PATH,
-        embedding_function=embeddings,
-    )
-
+    embeddings = OllamaEmbeddings(model=EMBEDDING_MODEL, base_url=OLLAMA_BASE_URL)
+    vectorstore = Chroma(persist_directory=VECTORSTORE_PATH,embedding_function=embeddings)
     return vectorstore
 
-
+# Criação da chain RAG
 def criar_chain():
-    """Cria a chain RAG completa."""
+    
     vectorstore = carregar_vectorstore()
     retriever = vectorstore.as_retriever(search_kwargs={"k": 3})
-
-    llm = ChatOllama(
-        model=LLM_MODEL,
-        base_url=OLLAMA_BASE_URL,
-        temperature=0.5,
-    )
+    llm = ChatOllama(model=LLM_MODEL,base_url=OLLAMA_BASE_URL,temperature=0.5)
 
     prompt = PromptTemplate(
         input_variables=["context", "question"],

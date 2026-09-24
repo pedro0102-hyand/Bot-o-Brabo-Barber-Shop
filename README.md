@@ -110,8 +110,8 @@ Barber Shop Bot/
 ### 1. Clone o repositório
 
 ```bash
-git clone https://github.com/seu-usuario/barber-shop-bot.git
-cd barber-shop-bot
+git clone https://github.com/pedro0102-hyand/Bot-o-Brabo-Barber-Shop.git
+cd Bot-o-Brabo-Barber-Shop
 ```
 
 ### 2. Crie e ative o ambiente virtual
