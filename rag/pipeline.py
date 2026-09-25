@@ -40,7 +40,7 @@ def criar_chain():
     
     vectorstore = carregar_vectorstore()
     retriever = vectorstore.as_retriever(search_kwargs={"k": 3})
-    llm = ChatOllama(model=LLM_MODEL,base_url=OLLAMA_BASE_URL,temperature=0.5)
+    llm = ChatOllama(model=LLM_MODEL,base_url=OLLAMA_BASE_URL,temperature=0.7)
 
     prompt = PromptTemplate(
         input_variables=["context", "question"],
