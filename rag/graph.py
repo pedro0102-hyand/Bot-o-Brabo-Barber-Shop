@@ -44,7 +44,7 @@ def _inicializar():
     from rag.pipeline import criar_chain
 
     _rag_chain = criar_chain()          # carrega ChromaDB + embeddings Ollama
-    _llm = ChatOllama(model=LLM_MODEL,base_url=OLLAMA_BASE_URL,temperature=0)
+    _llm = ChatOllama(model=LLM_MODEL,base_url=OLLAMA_BASE_URL,temperature=0.5)
     _grafo_cache = _criar_grafo_compilado()
 
 
