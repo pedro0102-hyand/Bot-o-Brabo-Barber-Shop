@@ -43,6 +43,8 @@ def criar_chain():
     llm = ChatOllama(model=LLM_MODEL,base_url=OLLAMA_BASE_URL,temperature=0.7)
 
     prompt = PromptTemplate(
+
+        # recupera os chunks, recebe a pergunta do usuário e retorna a resposta do LLM 
         input_variables=["context", "question"],
         template="""Você é um assistente virtual da Barbearia O Brabo, localizada em Nova Iguaçu, RJ.
 Responda apenas com base nas informações fornecidas abaixo.
